@@ -352,33 +352,36 @@ def probe_thermal_zones(root: Path = Path("/")) -> dict[str, Any]:
     zones = []
 
     if not list(base.glob(src)):
-        return unknown(root, "given file location is bad")
+        return unknown(str(base), "thermal directory is missing")
     for sub_dir in base.glob(src):
-        
-        # get their temp + type files
-        
-        temp = read_text(sub_dir, "/temp")
-        type_ = read_text(sub_dir, "/type") 
-        
+        try:
+            temp = read_text(sub_dir, "/temp")
+            type_ = read_text(sub_dir, "/type")
+        except TypeError:
+            return unknown(str(sub_dir), "thermal zone read failed")
+
         if temp is not None:
-            temp_c = int(temp) / 1000.0
+            try:
+                temp_c = int(temp) / 1000.0
+            except ValueError:
+                return unknown(str(sub_dir), "temp file is malformed")
         else:
-            return unknown(sub_dir, "temp file not found")
-        
+            continue
+
         if type_ is not None:
             type_ = type_.strip()
             zones.append({"zone": sub_dir.name, "type": type_, "temp_c": temp_c})
-        else:
-            return unknown(sub_dir, "type file not found")
 
-    
     # find max temp for values
     max_temp = None
     if zones:
         max_temp = max(zone["temp_c"] for zone in zones)
-    
+
+    if max_temp is None:
+        return unknown(str(base), "no readable thermal zones were found")
+
     return {
-        "value":max_temp,
+        "value": max_temp,
         "zones": zones,
         "source": "/sys/class/thermal/thermal_zone*/temp",
         "status": "ok",
