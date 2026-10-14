@@ -137,6 +137,7 @@ def generate_all_prune_outputs(
             before=tensors,
             after=channel_pruned_tensors,
             storage="dense",
+            mask_encoding = None
         ),
     }
 
