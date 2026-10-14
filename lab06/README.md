@@ -50,14 +50,6 @@ cd lab05/
 python main.py
 ```
 
-## How to compare responses
-
-After completing the code, please validate the resulting JSON output file against `sample_complexity_results.json` to ensure it conforms to the expected format before submission. Use the following command to do so.
-
-```bash
-python compare_json.py ref_json.json your_json.json
-```
-
 ## How to Debug your code
 
 There is only one way to debug code - 
