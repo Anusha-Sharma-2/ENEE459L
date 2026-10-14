@@ -33,7 +33,7 @@ The instructions for writing the code are provided in slides in `Module 1` on EL
 6. **precision_row**: page 4-5
 7. **pareto_front**: page 5-6
 
-## How to clone lab05 code
+## How to clone lab06 code
 
 ```
 git remote add upstream https://github.com/YOUR_USERNAME/YOUR_REPO.git
@@ -44,7 +44,7 @@ git push origin main
 ## How to Run
 
 ```bash
-cd lab05/
+cd lab06/
 
 # Generate the report on the board
 python main.py
@@ -57,7 +57,7 @@ There is only one way to debug code -
 
 ## How to save your work
 
-For saving your work, you create a new branch named `solution4` by running the following command.
+For saving your work, you create a new branch named `solution6` by running the following command.
 ```bash
 git switch -c solution6
 ```
