@@ -2,13 +2,9 @@
 
 Two INT8 quantized files are identical in size, both 12,460 bytes, both per-channel symmetric. Only one metric differs: which activation samples the calibrator was allowed to see. One flattens half the activation range onto a single quantized code. Which one did you ship, and can you tell from the file?
 
-## The lab question
-
-You pruned 90% of weights. What got smaller—parameter count, disk file, tensor shape, or nothing? Two methods called "pruning" produce identical sparsity reports while measuring completely different things. One removes weights (sparsity appears in every metric). One masks weights in-place (file and speed unchanged). Can you tell them apart from the numbers?
-
 ## What is this lab is built around
 
-This lab is built around exposing the critical difference between setting neural network weights to zero and actually achieving hardware or memory savings through pruning. Without relying on external frameworks like PyTorch or NumPy, it contrasts **fine-grained (unstructured) pruning**—which merely masks values while leaving tensor shapes, parameter counts, and dense compute workloads unchanged—against **structured channel pruning**, which physically slices away contiguous output channels to yield genuinely smaller, faster dense tensors. Through rigorous disk byte accounting (`dense`, `masked`, and `sparse`) and structural taxonomy classifications (including 2:4 Ampere sparse patterns), the lab teaches students to evaluate pruning not by nominal request percentages, but by measurable reductions in storage footprint and hardware execution shape.
+This lab is built around post-training quantization and the practical trade-offs between model compression and numerical accuracy. Using a deterministic convolutional neural network (`tinyconv`), it systematically investigates how moving from 32-bit floating-point weights and activations down to FP16 or INT8 formats affects disk storage and error rates. Central to the assignment is exploring the nuances of 8-bit quantization—contrasting whole-tensor versus per-channel scaling to handle channel-dependent weight distributions, evaluating symmetric versus asymmetric schemes on one-sided ReLU activations, and demonstrating how biased calibration sets (such as single-class activation data) cause severe clipping and degradation. Finally, it uses a multi-objective Pareto frontier analysis to identify the winning configurations that achieve the best balance between minimal effective bits per parameter and low reconstruction error.
 
 
 ## What You Will Build
