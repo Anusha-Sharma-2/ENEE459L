@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "device_id": "jetson-07",
+  "hostname": "ECETLAVW115200-desktop",
+  "collected_at": "2026-09-15T04:47:52Z",
+  "probe_root": "/",
+  "findings": {
+    "module_model": {
+      "value": "NVIDIA Jetson Orin Nano Engineering Reference Developer Kit Super",
+      "source": "/proc/device-tree/model",
+      "status": "ok"
+    },
+    "memory_total_kb": {
+      "value": 7789952,
+      "source": "/proc/meminfo",
+      "status": "ok"
+    },
+    "root_source": {
+      "value": "/dev/nvme0n1p1",
+      "kind": "nvme",
+      "source": "/proc/mounts",
+      "status": "ok"
+    },
+    "nvme_present": {
+      "value": true,
+      "source": "/sys/block/nvme0n1",
+      "model": "PNY CS2241 500GB SSD"
+    },
+    "pcie_link": {
+      "value": 1,
+      "negotiated": {
+        "raw": "\t\tLnkSta:\tSpeed 2.5GT/s (ok), Width x1 (ok)",
+        "gts": 2.5,
+        "width": 1,
+        "gen": 1
+      },
+      "capability": {
+        "raw": "\t\tLnkCap:\tPort #0, Speed 2.5GT/s, Width x1, ASPM L0s L1, Exit Latency L0s unlimited, L1 <64us",
+        "gts": 2.5,
+        "width": 1,
+        "gen": 1
+      },
+      "interpretation": "link running at its full capability, Gen1 x1",
+      "source": "/proc/device-tree/model",
+      "status": "ok"
+    },
+    "thermal": {
+      "value": null,
+      "source": "/sys/class/thermal/thermal_zone2",
+      "status": "unknown",
+      "detail": "thermal zone read failed"
+    },
+    "power_mode": {
+      "value": "25W",
+      "test": "1",
+      "source": "nvpmodel -q",
+      "status": "ok"
+    }
+  },
+  "verdicts": {
+    "boots_from_nvme": {
+      "claim": "root filesystem is on NVMe",
+      "result": "pass",
+      "evidence": {
+        "value": "/dev/nvme0n1p1",
+        "kind": "nvme",
+        "source": "/proc/mounts",
+        "status": "ok"
+      },
+      "detail": "root is /dev/nvme0n1p1"
+    },
+    "nvme_fitted": {
+      "claim": "an NVMe drive is fitted and visible",
+      "result": "pass",
+      "evidence": {
+        "value": true,
+        "source": "/sys/block/nvme0n1",
+        "model": "PNY CS2241 500GB SSD"
+      }
+    },
+    "memory_visible": {
+      "claim": "at least 6 GB of RAM is visible to Linux",
+      "result": "pass",
+      "evidence": {
+        "value": 7789952,
+        "source": "/proc/meminfo",
+        "status": "ok"
+      },
+      "detail": "7.43 GiB visible; the carveout for GPU and hardware is taken before Linux sees the pool"
+    },
+    "pcie_link_understood": {
+      "claim": "the negotiated PCIe link is known and explained",
+      "result": "pass",
+      "evidence": {
+        "value": 1,
+        "negotiated": {
+          "raw": "\t\tLnkSta:\tSpeed 2.5GT/s (ok), Width x1 (ok)",
+          "gts": 2.5,
+          "width": 1,
+          "gen": 1
+        },
+        "capability": {
+          "raw": "\t\tLnkCap:\tPort #0, Speed 2.5GT/s, Width x1, ASPM L0s L1, Exit Latency L0s unlimited, L1 <64us",
+          "gts": 2.5,
+          "width": 1,
+          "gen": 1
+        },
+        "interpretation": "link running at its full capability, Gen1 x1",
+        "source": "/proc/device-tree/model",
+        "status": "ok"
+      },
+      "detail": "link running at its full capability, Gen1 x1"
+    }
+  },
+  "summary": {
+    "pass": 4,
+    "fail": 0,
+    "unknown": 0,
+    "ready_for_labs": true
+  }
+}

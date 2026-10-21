@@ -118,40 +118,223 @@ def quantize_tensor(t: Tensor, bits: int = DEFAULT_BITS,
                     clip: str = "minmax",
                     percentile: float = DEFAULT_PERCENTILE,
                     given_range: tuple[float, float] | None = None) -> Quantized:
-    pass
+    
+    if granularity not in GRANULARITIES or clip not in CLIP_METHODS:
+        raise TensorError(
+            f"unknown granularity {granularity!r} or clip method {clip!r}"
+        )
+
+    qmin , qmax = _qmin_qmax(bits, symmetric)
+
+    if granularity == "per_channel":
+        groups = [_channel_slice (t, c) for c in range (t.channels)]
+    else:
+        groups = [(0, len (t.data))]
+
+    codes = [0] * len(t.data)
+    scales: list[float] = []
+    zeros: list[int] = []
+    clipped = 0
+
+    for lo, hi in groups:
+        if given_range is not None:
+            rlo, rhi = float(given_range[0]), float(given_range[1])
+        else:
+            rlo, rhi = _range_of(t.data[lo:hi], clip, percentile, bits)
+        s, z = _scale_zero(rlo, rhi, bits, symmetric)
+        scales.append(s)
+        zeros.append(z)
+        for i in range(lo, hi):
+            q = _round_half_up(t.data[i] / s) + z
+            if q < qmin or q > qmax:
+                clipped += 1
+            codes[i] = max(qmin, min(qmax, q))
+
+    return Quantized(
+        name = t.name, shape = tuple(t.shape), codes = tuple(codes),
+        scales = tuple(scales), zeros = tuple(zeros), bits = int(bits),
+        granularity = granularity, symmetric = bool(symmetric), clipped =
+            clipped
+    )
 
 
 def dequantize(qt: Quantized) -> Tensor:
-    pass
+    stride = qt.channel_stride if qt.granularity == "per_channel" else len(qt.codes)
+
+    if stride <= 0:
+        raise TensorError
+
+    out = []
+    for i, q in enumerate(qt.codes):
+        g = i // stride
+        if g >= len(qt.scales):
+            raise TensorError
+        out.append(round(qt.scales[g] * (int(q) - qt.zeros[g]), 8))
+
+    return Tensor(name = qt.name, shape = qt.shape, data = tuple(out),
+        dtype = "fp32")
 
 
 
 def quantization_error(before: Sequence[Tensor],
                        after: Sequence[Tensor]) -> dict[str, float]:
-    pass
+    b = list(before)
+    a = list(after)
+
+    if len(b) != len(a):
+        raise TensorError
+
+    num = 0.0
+    den = 0.0
+    worst = 0.0
+
+    for x, y in zip(b, a):
+        if len(x.data) != len(y.data):
+            raise TensorError
+
+        for u, v in zip(x.data, y.data):
+            d = u - v
+            num += d * d
+            den += u * u
+            worst = max(worst, abs(d))
+
+    frob = math.sqrt(num)
+    return {
+        "frobenius": round(frob, 8),
+        "relative": round(frob / math.sqrt(den), 8) if den > 0.0 else 0.0,
+        "max_abs": round(worst, 8)
+    }
 
 
 
 def bytes_stored(tensors: Sequence[Tensor], precision: str = "fp32",
                  granularity: str = "per_tensor") -> int:
-    pass
+    # check inputs
+    if precision not in PRECISIONS:
+        raise TensorError(f"unknown precision {precision!r}; known: {list(PRECISIONS)}")
+    if granularity not in GRANULARITIES:
+        raise TensorError(
+            f"unknown granularity {granularity!r}; known: {list(GRANULARITIES)}"
+        )
+
+    # element size
+    per = dtype_bytes(precision)
+    total = 0.0
+    # loop through tensors
+    for t in tensors:
+        total += t.parameters * per
+        if precision == "int8":
+            groups = t.channels if granularity == "per_channel" else 1
+            total += groups * (SCALE_BYTES + ZERO_BYTES)
+            
+    return int(total)
 
 
 def effective_bits(tensors: Sequence[Tensor], precision: str = "fp32",
                    granularity: str = "per_tensor") -> float:
-    pass
+    n = total_parameters(tensors)
+    if n <= 0:
+        raise TensorError("effective bits are undefined for a model with no parameters")
+    
+    return round(bytes_stored(tensors, precision, granularity) * 8.0 / n, 4)
 
 
 def precision_row(model_name: str, config: Mapping[str, Any],
                   tensors: Sequence[Tensor],
                   calibration_values: Sequence[float],
                   all_values: Sequence[float]) -> dict[str, Any]:
-    pass
+    #extract settings
+    label = config.get("label")
+    if label is None or not str(label).strip():
+        raise TensorError("configuration label is required")
+    precision = config.get("precision", "fp32")
+    granularity = config.get("granularity", "per_tensor")
+    symmetric = config.get("symmetric", True)
+    clip = config.get("clip", "minmax")
+    percentile = config.get("percentile", DEFAULT_PERCENTILE)
+    calibration = config.get("calibration", "all")
+
+    # handle weights
+    if precision == "int8":
+        qs = [quantize_tensor(t, DEFAULT_BITS, granularity, symmetric, clip, percentile)for t in tensors]
+        after = [dequantize(q) for q in qs]
+        scale_count = sum(q.scale_count for q in qs)
+    elif precision == "fp16":
+        after = [to_fp16(t) for t in tensors]
+        scale_count = 0
+    else:
+        after = list(tensors)
+        scale_count = 0
+
+    # handle activations
+    acts = as_tensor("activations", all_values)
+    if precision == "int8":
+        rlo, rhi = _range_of(calibration_values, clip, percentile, DEFAULT_BITS)
+        
+        qa = quantize_tensor(acts, DEFAULT_BITS, "per_tensor", False, clip, percentile,
+            given_range=(rlo, rhi),
+        )
+        act_after = dequantize(qa)
+        clipped = qa.clipped_fraction
+    else:
+        rlo, rhi = min(acts.data), max(acts.data)
+        act_after = to_fp16(acts) if precision == "fp16" else acts
+        clipped = 0.0
+
+    return {
+        "model": str(model_name),
+        "label": str(label),
+        "precision": precision,
+        "granularity": granularity if precision == "int8" else "n/a",
+        "symmetric": symmetric if precision == "int8" else None,
+        "calibration": calibration if precision == "int8" else "not calibrated",
+        "clip": clip if precision == "int8" else "n/a",
+        "parameters": total_parameters(tensors),
+        "weight_error": quantization_error(tensors, after)["relative"],
+        "activation_error": quantization_error([acts], [act_after])["relative"],
+        "clipped_fraction": clipped,
+        "activation_range": [round(float(rlo), 8), round(float(rhi), 8)],
+        "scale_count": scale_count,
+        "bytes_stored": bytes_stored(tensors, precision, granularity),
+        "effective_bits": effective_bits(tensors, precision, granularity),
+    }
 
 
 def pareto_front(points: Sequence[Mapping[str, Any]],
                  objectives: Mapping[str, float]) -> tuple[int, ...]:
-    pass
+    # check inputs
+    pts = list(points)
+    if not pts or not objectives:
+        raise TensorError("points and objectives must both be non-empty")
+    
+    for i, point in enumerate(pts):
+        missing = [name for name in objectives if name not in point]
+        if missing:
+            raise TensorError(f"point {i} is missing objective(s): {missing}")
+
+    front: list[int] = []
+    # outer loop
+    for i, a in enumerate(pts):
+        beaten = False
+        # middle loop
+        for j, b in enumerate(pts):
+            if i == j:
+                continue
+            better = False
+            worse = False
+            # inner loop
+            for name, sense in objectives.items():
+                d = (float(b[name]) - float(a[name])) * float(sense)
+                if d > 0.0:
+                    better = True
+                elif d < 0.0:
+                    worse = True
+            if better and not worse:
+                beaten = True
+                break
+        if not beaten:
+            front.append(i)
+    return tuple(front)
 
 
 if __name__ == "__main__":
@@ -314,4 +497,3 @@ if __name__ == "__main__":
         json.dump(results, f, indent=2)
 
     print(f"\n[Saved] Full output written to {report_path.resolve()}")
-
