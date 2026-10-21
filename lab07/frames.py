@@ -8,6 +8,8 @@ import cv2
 import time
 import json
 import numpy as np
+import statistics
+import math
 from pathlib import Path
 
 class FrameError(ValueError):
@@ -114,37 +116,100 @@ def grab_frame(pipeline: str, warmup_frames: int = 15) -> np.ndarray:
 ############################
 
 def frame_bytes(width: int, height: int, fmt: str) -> int:
-    pass
+    if width <= 0 or height <= 0:
+        raise FrameError
+
+    bpp = _bytes_per_pixel(fmt.lower())
+    return math.ceil(bpp * width * height)
 
 
 def bytes_per_second(width: int, height: int, fmt: str, fps: float) -> float:
-    pass
+    # validate that fps > 0
+    if fps <= 0:
+        raise ValueError("Frames per second (fps) must be greater than zero.")
+    # return bandwidth
+    return frame_bytes(width, height, fmt) * fps
 
 
 def frame_stats(pixels: Sequence[float] | Iterable[float]) -> dict[str, float]:
-    pass
+    pixels = list(pixels)
+
+    if not pixels:
+        raise FrameError("pixels list is empty")
+
+    vmin = min(pixels)
+    vmax = max(pixels)
+
+    n = len(pixels)
+    mean = statistics.mean(pixels)
+    stdev = statistics.stdev(pixels)
+
+    return {
+        "min": float(vmin),
+        "max": float(vmax),
+        "mean": float(mean),
+        "spread": float(vmax - vmin),
+        "sd": float(stdev),
+        "samples": int(n)
+    }
+
 
 
 def classify(stats: dict[str, float]) -> tuple[str, str]:
-    pass
+    # ensure mean spread max are present in stats
+    required_keys = {"mean", "spread", "max"}
+    if not required_keys.issubset(stats.keys()):
+        raise ValueError(f"Stats dictionary must contain keys: {required_keys}")
+    
+    if stats["max"] <= BLACK_MAX:
+        return "black", "max <= BLACK_MAX"
+    elif stats["spread"] <= FLAT_SPREAD:
+        return "flat", "spread <= FLAT_SPREAD and mean < 0.10"
+    elif stats["mean"] < 0.10:
+        return "dark", "mean < 0.10"
+    else:
+        return "scene", "neither black nor flat"
 
 
 def conversion_bytes(width: int, height: int, src: str, dst: str) -> int:
-    pass
+    if src.lower() == dst.lower():
+        return 0
+    read_vol = frame_bytes(width, height, src)
+    write_vol = frame_bytes(width, height, dst)
+    return int(read_vol + write_vol)
 
 
 def resize_bytes(src_w: int, src_h: int, dst_w: int, dst_h: int,
                  fmt: str) -> int:
-    pass
+    return (frame_bytes(src_w, src_h, fmt) + frame_bytes(dst_w, dst_h, fmt))
 
 
 def normalise_bytes(width: int, height: int, channels: int = 3,
                     out_bytes: int = 4) -> int:
-    pass
+    if width <= 0 or height <= 0 or channels <= 0:
+        raise FrameError("width or height or channels <= 0")
+
+    P = width * height * channels
+    Bytes_out = P * out_bytes
+    return P + Bytes_out
 
 
 def summarise_formats(width: int, height: int) -> list[dict[str, Any]]:
-    pass
+    base = frame_bytes(width, height, "rgb")
+    rows: list[dict[str, Any]] = []
+    
+    # iterate through every itentifier
+    for fmt in FORMATS:
+        size = frame_bytes(width, height, fmt)
+        rows.append({
+            "format": fmt,
+            "bytes_per_pixel": _bytes_per_pixel(fmt),
+            "bytes": size,
+            "relative_to_rgb": size / base,
+            "note": FORMAT_NOTES[fmt],
+        })
+        
+    return rows
 
 
 ###############################
